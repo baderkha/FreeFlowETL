@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Fragment } from 'react';
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -28,8 +25,9 @@ import {
   TextField,
   Typography
 } from '@mui/material';
-import { keyframes } from '@mui/material/styles';
+import { alpha, keyframes } from '@mui/material/styles';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
+import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
 import ChevronLeftRoundedIcon from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import CloudQueueRoundedIcon from '@mui/icons-material/CloudQueueRounded';
@@ -72,10 +70,6 @@ const sourceIconUrl = (slug, muted = false) => {
 const initialSource = sourceTypes.find((item) => item.supported)?.value || sourceTypes[0]?.value || '';
 
 const initialForm = {
-  connectionName: '',
-  connectionDisplayName: '',
-  owner: '',
-  schedule: 'hourly',
   sourceType: initialSource,
   sourceHost: '',
   sourcePort: initialSource === 'postgres' ? '5432' : '3306',
@@ -111,8 +105,7 @@ function ConnectionsPage() {
   const [containerHeight, setContainerHeight] = useState(0);
   const [maxContainerHeight, setMaxContainerHeight] = useState(760);
   const [guidedSections, setGuidedSections] = useState({
-    connection: true,
-    credentials: false,
+    credentials: true,
     advanced: false
   });
   const [expandedTableConfigs, setExpandedTableConfigs] = useState({ table_one: true });
@@ -194,10 +187,7 @@ function ConnectionsPage() {
 
     return [
       '---',
-      `id: "${form.connectionName || 'tap_mysql'}"`,
-      `name: "${form.connectionDisplayName || form.connectionName || 'Source Connection'}"`,
       `type: "tap-${form.sourceType}"`,
-      `owner: "${form.owner || 'somebody@foo.com'}"`,
       'db_conn:',
       `  host: "${form.sourceHost || 'source-host'}"`,
       `  port: ${form.sourcePort || (form.sourceType === 'postgres' ? 5432 : 3306)}`,
@@ -257,9 +247,6 @@ function ConnectionsPage() {
   const canContinue =
     (activeStep === 0 && selectedSourceSupported) ||
     (activeStep === 1 &&
-      Boolean(form.connectionName.trim()) &&
-      Boolean(form.connectionDisplayName.trim()) &&
-      Boolean(form.owner.trim()) &&
       Boolean(form.sourceHost.trim()) &&
       Boolean(form.sourcePort.trim()) &&
       Boolean(form.sourceUser.trim()) &&
@@ -288,11 +275,11 @@ function ConnectionsPage() {
     setTableSearch('');
     setSaved(null);
     setActiveStep(0);
-    setGuidedSections({ connection: true, credentials: false, advanced: false });
+    setGuidedSections({ credentials: true, advanced: false });
   };
 
-  const toggleGuidedSection = (sectionKey) => (_, expanded) => {
-    setGuidedSections((prev) => ({ ...prev, [sectionKey]: expanded }));
+  const toggleGuidedSection = (sectionKey) => {
+    setGuidedSections((prev) => ({ ...prev, [sectionKey]: !prev[sectionKey] }));
   };
 
   const toggleTableSelection = (tableName) => {
@@ -315,6 +302,43 @@ function ConnectionsPage() {
       };
     });
     setExpandedTableConfigs((prev) => ({ ...prev, [tableName]: true }));
+  };
+
+  const toggleSelectAllVisibleTables = () => {
+    setForm((prev) => {
+      const visibleTables = filteredTables;
+      const allVisibleSelected = visibleTables.length > 0 && visibleTables.every((tableName) => prev.selectedTables.includes(tableName));
+
+      if (allVisibleSelected) {
+        return {
+          ...prev,
+          selectedTables: prev.selectedTables.filter((tableName) => !visibleTables.includes(tableName))
+        };
+      }
+
+      const nextSelected = new Set(prev.selectedTables);
+      const nextConfigs = { ...prev.tableConfigs };
+      visibleTables.forEach((tableName) => {
+        nextSelected.add(tableName);
+        if (!nextConfigs[tableName]) {
+          nextConfigs[tableName] = { replicationMethod: 'LOG_BASED', cursorColumn: '' };
+        }
+      });
+
+      return {
+        ...prev,
+        selectedTables: Array.from(nextSelected),
+        tableConfigs: nextConfigs
+      };
+    });
+
+    setExpandedTableConfigs((prev) => {
+      const next = { ...prev };
+      filteredTables.forEach((tableName) => {
+        next[tableName] = true;
+      });
+      return next;
+    });
   };
 
   const updateTableConfig = (tableName, key, value) => {
@@ -384,16 +408,56 @@ function ConnectionsPage() {
     <Stack spacing={3}>
       <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={1}>
         <Typography variant="h4">Connections Setup</Typography>
-        <Chip icon={<HubRoundedIcon />} label="PipelineWise-style config" color="primary" variant="outlined" />
       </Stack>
 
       <Paper sx={{ p: { xs: 2, md: 3 }, borderRadius: 3 }}>
         <Stepper activeStep={Math.min(activeStep, steps.length - 1)} alternativeLabel>
-          {steps.map((step) => (
-              <Step key={step} completed={activeStep > steps.indexOf(step)}>
-              <StepLabel icon={stepIcons[steps.indexOf(step)]}>{step}</StepLabel>
-            </Step>
-          ))}
+          {steps.map((step, index) => {
+            const isCompleted = activeStep > index;
+            const isCurrent = activeStep === index || (activeStep >= steps.length && index === steps.length - 1);
+
+            return (
+              <Step key={step} completed={isCompleted}>
+                <StepLabel
+                  icon={
+                    <Box
+                      sx={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: isCompleted || isCurrent ? '#2b2200' : 'primary.main',
+                        bgcolor: isCurrent
+                          ? 'rgba(255, 212, 71, 0.95)'
+                          : isCompleted
+                            ? 'rgba(255, 212, 71, 0.7)'
+                            : 'rgba(255, 212, 71, 0.1)',
+                        border: isCompleted || isCurrent ? '1px solid rgba(255, 212, 71, 0.9)' : '1px solid rgba(255, 212, 71, 0.35)',
+                        boxShadow: isCurrent
+                          ? '0 0 0 1px rgba(255,212,71,0.75), 0 0 22px rgba(255,212,71,0.8)'
+                          : isCompleted
+                            ? '0 0 0 1px rgba(255,212,71,0.55), 0 0 14px rgba(255,212,71,0.45)'
+                            : '0 0 8px rgba(255,212,71,0.2)',
+                        transition: 'all 180ms ease'
+                      }}
+                    >
+                      {stepIcons[index]}
+                    </Box>
+                  }
+                  sx={{
+                    '& .MuiStepLabel-label': {
+                      color: isCurrent || isCompleted ? 'primary.main' : 'text.secondary',
+                      fontWeight: isCurrent ? 700 : 500
+                    }
+                  }}
+                >
+                  {step}
+                </StepLabel>
+              </Step>
+            );
+          })}
         </Stepper>
 
         <Box
@@ -492,59 +556,114 @@ function ConnectionsPage() {
                 <Typography variant="h6">Connection Details</Typography>
                 <Alert severity="info">Selected source: {selectedSource?.label || form.sourceType}</Alert>
 
-                <Accordion expanded={guidedSections.connection} onChange={toggleGuidedSection('connection')}>
-                  <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    borderRadius: 3,
+                    border: `1px solid ${alpha('#ffd447', 0.2)}`,
+                    background: alpha('#130f2b', 0.56),
+                    p: 1.5
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    justifyContent="space-between"
+                    sx={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => toggleGuidedSection('credentials')}
+                  >
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <DnsRoundedIcon fontSize="small" />
-                      <Typography variant="subtitle2" color="text.secondary">Connection</Typography>
+                      <Box
+                        sx={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: alpha('#ffd447', 0.2)
+                        }}
+                      >
+                        <KeyRoundedIcon fontSize="small" />
+                      </Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        Source Credentials
+                      </Typography>
                     </Stack>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Stack spacing={1.5}>
-                      <TextField fullWidth required label="Tap ID" value={form.connectionName} onChange={updateField('connectionName')} />
-                      <TextField fullWidth required label="Tap Name" value={form.connectionDisplayName} onChange={updateField('connectionDisplayName')} />
-                      <TextField fullWidth required label="Owner Email" value={form.owner} onChange={updateField('owner')} />
-                      <TextField fullWidth label="Schedule" value={form.schedule} onChange={updateField('schedule')} helperText="Examples: hourly, daily, cron(0 * * * *)" />
+                    <ExpandMoreRoundedIcon
+                      sx={{
+                        color: 'primary.main',
+                        transform: guidedSections.credentials ? 'rotate(180deg)' : 'none',
+                        transition: 'transform 180ms ease'
+                      }}
+                    />
+                  </Stack>
+                  <Collapse in={guidedSections.credentials} timeout={180} unmountOnExit>
+                    <Stack spacing={1.5} sx={{ pt: 1.25 }}>
+                      <TextField fullWidth required label="Host" value={form.sourceHost} onChange={updateField('sourceHost')} />
+                      <TextField fullWidth required label="Port" value={form.sourcePort} onChange={updateField('sourcePort')} />
+                      <TextField fullWidth required label="User" value={form.sourceUser} onChange={updateField('sourceUser')} />
+                      <TextField fullWidth required type="password" label="Password" value={form.sourcePassword} onChange={updateField('sourcePassword')} />
+                      <TextField fullWidth required label="Database" value={form.sourceDatabase} onChange={updateField('sourceDatabase')} />
                     </Stack>
-                  </AccordionDetails>
-                </Accordion>
+                  </Collapse>
+                </Paper>
 
-                <Accordion expanded={guidedSections.credentials} onChange={toggleGuidedSection('credentials')}>
-                  <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    borderRadius: 3,
+                    border: `1px solid ${alpha('#ffd447', 0.2)}`,
+                    background: alpha('#130f2b', 0.42),
+                    p: 1.5
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    justifyContent="space-between"
+                    sx={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => toggleGuidedSection('advanced')}
+                  >
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <KeyRoundedIcon fontSize="small" />
-                      <Typography variant="subtitle2" color="text.secondary">Source Credentials</Typography>
+                      <Box
+                        sx={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: alpha('#2ce6ff', 0.18)
+                        }}
+                      >
+                        <TuneRoundedIcon fontSize="small" />
+                      </Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        Advanced
+                      </Typography>
                     </Stack>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Stack spacing={1.5}>
-                      <TextField fullWidth required label="Source Host" value={form.sourceHost} onChange={updateField('sourceHost')} />
-                      <TextField fullWidth required label="Source Port" value={form.sourcePort} onChange={updateField('sourcePort')} />
-                      <TextField fullWidth required label="Source User" value={form.sourceUser} onChange={updateField('sourceUser')} />
-                      <TextField fullWidth required type="password" label="Source Password" value={form.sourcePassword} onChange={updateField('sourcePassword')} />
-                      <TextField fullWidth required label="Source Database" value={form.sourceDatabase} onChange={updateField('sourceDatabase')} />
-                    </Stack>
-                  </AccordionDetails>
-                </Accordion>
-
-                <Accordion expanded={guidedSections.advanced} onChange={toggleGuidedSection('advanced')}>
-                  <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <TuneRoundedIcon fontSize="small" />
-                      <Typography variant="subtitle2" color="text.secondary">Advanced</Typography>
+                      <Chip size="small" label="Optional" variant="outlined" />
+                      <ExpandMoreRoundedIcon
+                        sx={{
+                          color: 'primary.main',
+                          transform: guidedSections.advanced ? 'rotate(180deg)' : 'none',
+                          transition: 'transform 180ms ease'
+                        }}
+                      />
                     </Stack>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Stack spacing={1.5}>
+                  </Stack>
+                  <Collapse in={guidedSections.advanced} timeout={180} unmountOnExit>
+                    <Stack spacing={1.5} sx={{ pt: 1.25 }}>
                       <TextField fullWidth label="Filter DBs (optional)" value={form.filterDbs} onChange={updateField('filterDbs')} />
                       <TextField select fullWidth label="use_gtid" value={form.useGtid} onChange={updateField('useGtid')}>
                         <MenuItem value="true">true</MenuItem>
                         <MenuItem value="false">false</MenuItem>
                       </TextField>
-                      <TextField select fullWidth label="engine" value={form.engine} onChange={updateField('engine')}>
-                        <MenuItem value="mariadb/mysql">mariadb/mysql</MenuItem>
-                        <MenuItem value="postgresql">postgresql</MenuItem>
-                      </TextField>
+                      <TextField fullWidth label="DB Type" value="mariadb/mysql" disabled />
                       <TextField fullWidth label="fastsync_parallelism" value={form.fastsyncParallelism} onChange={updateField('fastsyncParallelism')} />
                       <TextField fullWidth label="target" value={form.targetId} onChange={updateField('targetId')} />
                       <TextField fullWidth label="batch_size_rows" value={form.batchSizeRows} onChange={updateField('batchSizeRows')} />
@@ -552,8 +671,15 @@ function ConnectionsPage() {
                       <TextField fullWidth label="source_schema" value={form.sourceSchemaName} onChange={updateField('sourceSchemaName')} />
                       <TextField fullWidth label="target_schema" value={form.targetSchemaName} onChange={updateField('targetSchemaName')} />
                     </Stack>
-                  </AccordionDetails>
-                </Accordion>
+                  </Collapse>
+                </Paper>
+
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.secondary' }}>
+                  <CheckCircleOutlineRoundedIcon fontSize="small" />
+                  <Typography variant="caption">
+                    Keep only credentials open for a clean setup. Expand Advanced only when needed.
+                  </Typography>
+                </Stack>
               </Stack>
             </Box>
 
@@ -578,11 +704,24 @@ function ConnectionsPage() {
                 />
                 <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
                   <TableContainer>
-                    <Table size="small">
+                    <Table size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
                       <TableHead>
                         <TableRow>
-                          <TableCell padding="checkbox">Select</TableCell>
-                          <TableCell>
+                          <TableCell padding="checkbox" sx={{ width: 64 }}>
+                            <Checkbox
+                              checked={
+                                filteredTables.length > 0 &&
+                                filteredTables.every((tableName) => form.selectedTables.includes(tableName))
+                              }
+                              indeterminate={
+                                filteredTables.some((tableName) => form.selectedTables.includes(tableName)) &&
+                                !filteredTables.every((tableName) => form.selectedTables.includes(tableName))
+                              }
+                              onChange={toggleSelectAllVisibleTables}
+                              inputProps={{ 'aria-label': 'select all visible tables' }}
+                            />
+                          </TableCell>
+                          <TableCell sx={{ width: '30%' }}>
                             <TableSortLabel
                               active={tableSortBy === 'tableName'}
                               direction={tableSortBy === 'tableName' ? tableSortOrder : 'asc'}
@@ -591,7 +730,7 @@ function ConnectionsPage() {
                               Table
                             </TableSortLabel>
                           </TableCell>
-                          <TableCell>
+                          <TableCell sx={{ width: '23%' }}>
                             <TableSortLabel
                               active={tableSortBy === 'method'}
                               direction={tableSortBy === 'method' ? tableSortOrder : 'asc'}
@@ -600,8 +739,8 @@ function ConnectionsPage() {
                               Method
                             </TableSortLabel>
                           </TableCell>
-                          <TableCell>Cursor</TableCell>
-                          <TableCell align="right">
+                          <TableCell sx={{ width: '23%' }}>Cursor</TableCell>
+                          <TableCell align="center" sx={{ width: 130 }}>
                             <TableSortLabel
                               active={tableSortBy === 'selected'}
                               direction={tableSortBy === 'selected' ? tableSortOrder : 'asc'}
@@ -610,7 +749,7 @@ function ConnectionsPage() {
                               Status
                             </TableSortLabel>
                           </TableCell>
-                          <TableCell align="right">Columns</TableCell>
+                          <TableCell align="center" sx={{ width: 90 }}>Columns</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -623,16 +762,16 @@ function ConnectionsPage() {
                           return (
                             <Fragment key={tableName}>
                               <TableRow key={tableName} hover>
-                                <TableCell padding="checkbox">
+                                <TableCell padding="checkbox" sx={{ width: 64 }}>
                                   <Checkbox checked={isSelected} onChange={() => toggleTableSelection(tableName)} />
                                 </TableCell>
-                                <TableCell>
+                                <TableCell sx={{ width: '30%' }}>
                                   <Stack direction="row" spacing={1} alignItems="center">
                                     <TableRowsRoundedIcon fontSize="small" />
-                                    <Typography>{tableName}</Typography>
+                                    <Typography noWrap>{tableName}</Typography>
                                   </Stack>
                                 </TableCell>
-                                <TableCell sx={{ minWidth: 180 }}>
+                                <TableCell sx={{ width: '23%' }}>
                                   <TextField
                                     select
                                     size="small"
@@ -646,7 +785,7 @@ function ConnectionsPage() {
                                     <MenuItem value="FULL_TABLE">FULL_TABLE</MenuItem>
                                   </TextField>
                                 </TableCell>
-                                <TableCell sx={{ minWidth: 180 }}>
+                                <TableCell sx={{ width: '23%' }}>
                                   {cfg.replicationMethod === 'INCREMENTAL' ? (
                                     <TextField
                                       select
@@ -668,7 +807,7 @@ function ConnectionsPage() {
                                     </Typography>
                                   )}
                                 </TableCell>
-                                <TableCell align="right">
+                                <TableCell align="center" sx={{ width: 130 }}>
                                   <Chip
                                     size="small"
                                     label={isSelected ? 'Selected' : 'Not Selected'}
@@ -676,7 +815,7 @@ function ConnectionsPage() {
                                     variant={isSelected ? 'filled' : 'outlined'}
                                   />
                                 </TableCell>
-                                <TableCell align="right">
+                                <TableCell align="center" sx={{ width: 90 }}>
                                   <IconButton size="small" onClick={() => toggleTableExpansion(tableName)}>
                                     <ExpandMoreRoundedIcon
                                       sx={{
@@ -767,7 +906,7 @@ function ConnectionsPage() {
               <Stack spacing={2}>
                 <Typography variant="h6">Review & Enroll</Typography>
                 <Alert icon={<CheckCircleRoundedIcon fontSize="inherit" />} severity="info">
-                  Ready to enroll: {form.connectionName || 'Untitled'} ({form.sourceType} → {form.targetType})
+                  Ready to enroll: tap-{form.sourceType} → {form.targetType}
                 </Alert>
                 <Typography variant="subtitle2" color="text.secondary">Source YAML</Typography>
                 <Box component="pre" sx={{ m: 0, p: 2, borderRadius: 1.5, backgroundColor: '#090817', color: '#ffe9a6', overflowX: 'auto', fontFamily: 'monospace', fontSize: 13 }}>{sourceYamlPreview}</Box>
@@ -784,7 +923,7 @@ function ConnectionsPage() {
                 <CheckCircleRoundedIcon color="success" sx={{ fontSize: 56 }} />
                 <Typography variant="h5">Connection Enrolled</Typography>
                 <Typography color="text.secondary" textAlign="center">
-                  {saved?.connectionName || 'Untitled'} is configured as {saved?.sourceType} → {saved?.targetType}.
+                  tap-{saved?.sourceType || form.sourceType} is configured to load into {saved?.targetType || form.targetType}.
                 </Typography>
                 <Button variant="contained" onClick={onStartOver} startIcon={<SaveRoundedIcon />}>Create Another Connection</Button>
               </Stack>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Avatar,
@@ -21,6 +21,7 @@ import { alpha, keyframes, useTheme } from '@mui/material/styles';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import HubRoundedIcon from '@mui/icons-material/HubRounded';
 import LanRoundedIcon from '@mui/icons-material/LanRounded';
+import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
@@ -39,6 +40,12 @@ const driftB = keyframes`
   100% { transform: translate(0px, 0px) scale(1); }
 `;
 
+const gridDrift = keyframes`
+  0% { background-position: 0px 0px, 0px 0px; }
+  50% { background-position: 18px 24px, -20px 14px; }
+  100% { background-position: 0px 0px, 0px 0px; }
+`;
+
 const glowPulse = keyframes`
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 212, 71, 0.12); }
   50% { box-shadow: 0 0 0 8px rgba(255, 212, 71, 0.04); }
@@ -55,11 +62,31 @@ const navItems = [
   { label: 'Settings', path: '/settings', icon: SettingsRoundedIcon }
 ];
 
+const PROFILE_IMAGE_KEY = 'ff_profile_image';
+const PROFILE_NAME_KEY = 'ff_profile_name';
+const PROFILE_UPDATE_EVENT = 'ff:profile-updated';
+
+const getInitials = (name) =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || 'FF';
+
+const createDefaultProfileImage = (name) => {
+  const initials = getInitials(name);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffd447"/><stop offset="100%" stop-color="#ff7a45"/></linearGradient></defs><rect width="160" height="160" rx="80" fill="#100c22"/><circle cx="80" cy="80" r="74" fill="url(#g)" opacity="0.94"/><text x="80" y="96" text-anchor="middle" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="56" font-weight="700" fill="#1c122f">${initials}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
 function AppShell() {
   const location = useLocation();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileName, setProfileName] = useState('Profile');
+  const [profileImage, setProfileImage] = useState('');
 
   const pageTitle = useMemo(() => {
     const active = navItems.find((item) =>
@@ -68,63 +95,109 @@ function AppShell() {
     return active?.label || 'FreeFlow ETL';
   }, [location.pathname]);
 
+  useEffect(() => {
+    const syncProfile = () => {
+      const name = localStorage.getItem(PROFILE_NAME_KEY) || 'Abe Operator';
+      let image = localStorage.getItem(PROFILE_IMAGE_KEY);
+      if (!image) {
+        image = createDefaultProfileImage(name);
+        localStorage.setItem(PROFILE_IMAGE_KEY, image);
+      }
+      setProfileName(name);
+      setProfileImage(image);
+    };
+
+    syncProfile();
+    window.addEventListener('storage', syncProfile);
+    window.addEventListener(PROFILE_UPDATE_EVENT, syncProfile);
+    return () => {
+      window.removeEventListener('storage', syncProfile);
+      window.removeEventListener(PROFILE_UPDATE_EVENT, syncProfile);
+    };
+  }, []);
+
   const drawer = (
-    <Box sx={{ height: '100%', p: 2 }}>
-      <Stack direction="row" alignItems="center" spacing={1.2} sx={{ px: 1, py: 1.5, mb: 1.5 }}>
-        <Avatar
+    <Box sx={{ height: '100%', p: 2, display: 'flex', flexDirection: 'column' }}>
+      <Box>
+        <Stack direction="row" alignItems="center" spacing={1.2} sx={{ px: 1, py: 1.5, mb: 1.5 }}>
+          <Avatar
+            sx={{
+              width: 36,
+              height: 36,
+              bgcolor: 'primary.main',
+              animation: `${glowPulse} 2.8s ease-in-out infinite`
+            }}
+          >
+            <HubRoundedIcon fontSize="small" />
+          </Avatar>
+          <Box sx={{ animation: `${brandFloat} 5s ease-in-out infinite` }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+              FreeFlow ETL
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Pipeline Console
+            </Typography>
+          </Box>
+        </Stack>
+
+        <List>
+          {navItems.map((item) => {
+            const selected =
+              item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
+            const Icon = item.icon;
+            return (
+              <ListItemButton
+                key={item.path}
+                component={RouterLink}
+                to={item.path}
+                onClick={() => setMobileOpen(false)}
+                selected={selected}
+                sx={{
+                  borderRadius: 2,
+                  mb: 0.5,
+                  '&.Mui-selected': {
+                    bgcolor: alpha(theme.palette.primary.main, 0.12),
+                    color: 'primary.main',
+                    transform: 'translateX(3px)'
+                  },
+                  transition: 'transform 180ms ease, background-color 180ms ease',
+                  '&:hover': {
+                    transform: 'translateX(2px)'
+                  }
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 36, color: 'inherit' }}>
+                  <Icon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText primary={item.label} />
+              </ListItemButton>
+            );
+          })}
+        </List>
+      </Box>
+
+      <Box sx={{ mt: 'auto', pt: 1.5 }}>
+        <ListItemButton
+          component={RouterLink}
+          to="/logout"
+          onClick={() => setMobileOpen(false)}
           sx={{
-            width: 36,
-            height: 36,
-            bgcolor: 'primary.main',
-            animation: `${glowPulse} 2.8s ease-in-out infinite`
+            borderRadius: 2,
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+            transition: 'transform 180ms ease, border-color 180ms ease, background-color 180ms ease',
+            '&:hover': {
+              transform: 'translateX(2px)',
+              borderColor: alpha(theme.palette.primary.main, 0.4),
+              bgcolor: alpha(theme.palette.primary.main, 0.08)
+            }
           }}
         >
-          <HubRoundedIcon fontSize="small" />
-        </Avatar>
-        <Box sx={{ animation: `${brandFloat} 5s ease-in-out infinite` }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-            FreeFlow ETL
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Pipeline Console
-          </Typography>
-        </Box>
-      </Stack>
-
-      <List>
-        {navItems.map((item) => {
-          const selected =
-            item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
-          const Icon = item.icon;
-          return (
-            <ListItemButton
-              key={item.path}
-              component={RouterLink}
-              to={item.path}
-              onClick={() => setMobileOpen(false)}
-              selected={selected}
-              sx={{
-                borderRadius: 2,
-                mb: 0.5,
-                '&.Mui-selected': {
-                  bgcolor: alpha(theme.palette.primary.main, 0.12),
-                  color: 'primary.main',
-                  transform: 'translateX(3px)'
-                },
-                transition: 'transform 180ms ease, background-color 180ms ease',
-                '&:hover': {
-                  transform: 'translateX(2px)'
-                }
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 36, color: 'inherit' }}>
-                <Icon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText primary={item.label} />
-            </ListItemButton>
-          );
-        })}
-      </List>
+          <ListItemIcon sx={{ minWidth: 36, color: 'inherit' }}>
+            <LogoutRoundedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Logout" />
+        </ListItemButton>
+      </Box>
     </Box>
   );
 
@@ -144,7 +217,8 @@ function AppShell() {
           pointerEvents: 'none',
           opacity: 0.25,
           backgroundImage:
-            'repeating-linear-gradient(0deg, rgba(255, 212, 71, 0.08) 0px, rgba(255, 212, 71, 0.08) 1px, transparent 1px, transparent 6px), repeating-linear-gradient(90deg, rgba(44, 230, 255, 0.05) 0px, rgba(44, 230, 255, 0.05) 1px, transparent 1px, transparent 6px)'
+            'repeating-linear-gradient(0deg, rgba(255, 212, 71, 0.08) 0px, rgba(255, 212, 71, 0.08) 1px, transparent 1px, transparent 6px), repeating-linear-gradient(90deg, rgba(44, 230, 255, 0.05) 0px, rgba(44, 230, 255, 0.05) 1px, transparent 1px, transparent 6px)',
+          animation: `${gridDrift} 56s ease-in-out infinite`
         }}
       />
       <Box
@@ -157,7 +231,7 @@ function AppShell() {
           borderRadius: '50%',
           filter: 'blur(18px)',
           bgcolor: alpha(theme.palette.secondary.main, 0.26),
-          animation: `${driftA} 16s ease-in-out infinite`
+          animation: `${driftA} 34s ease-in-out infinite`
         }}
       />
       <Box
@@ -170,7 +244,7 @@ function AppShell() {
           borderRadius: '50%',
           filter: 'blur(16px)',
           bgcolor: alpha(theme.palette.primary.main, 0.24),
-          animation: `${driftB} 20s ease-in-out infinite`
+          animation: `${driftB} 42s ease-in-out infinite`
         }}
       />
 
@@ -198,7 +272,7 @@ function AppShell() {
             elevation={0}
             sx={{
               px: 2,
-              py: 1.25,
+              py: 1.5,
               mb: 2.5,
               borderRadius: 3,
               border: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
@@ -232,11 +306,15 @@ function AppShell() {
                   }}
                 >
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Avatar sx={{ width: 26, height: 26, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+                    <Avatar
+                      src={profileImage}
+                      alt={profileName}
+                      sx={{ width: 26, height: 26, bgcolor: 'primary.main', color: 'primary.contrastText' }}
+                    >
                       <PersonRoundedIcon sx={{ fontSize: 16 }} />
                     </Avatar>
                     <Typography variant="button" sx={{ fontWeight: 700 }}>
-                      Profile
+                      {profileName}
                     </Typography>
                   </Stack>
                 </Button>
